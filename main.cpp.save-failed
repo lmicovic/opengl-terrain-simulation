@@ -1,0 +1,449 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/glm.hpp>
+
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+#include <time.h>
+#include <string>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <map>
+#include <vector>
+
+#include <random>
+
+
+#include <vector>
+#include <stdbool.h>
+
+#define STB_IMAGE_IMPLEMENTATION
+
+#include "processInput.hpp"
+
+
+
+#include "rawModel.h"
+#include "intList.hpp"
+#include "EntityRenderer.h"
+#include "window.h"
+#include "staticShader.hpp"
+#include "MaterRenderer.hpp"
+#include "TextureModel.h"
+#include "camera.hpp"
+
+#include "model.hpp"
+#include "loader.h"
+#include "Terrain.hpp"
+
+IntList* head;
+
+
+Window wind;
+GLFWwindow* window = wind.createWindow();
+Camera camera = Camera(window);
+
+
+
+
+void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+
+int main() {
+
+
+
+
+
+
+    Loader loader = Loader();       // Load Data to VBO
+
+    //--------------------------------------------------------------
+    // Render Setting
+    //--------------------------------------------------------------
+    StaticShader staticShader = StaticShader();
+    // EntityRenderer entitiyRenderer = EntityRenderer(wind, staticShader, glm::mat4(1));
+    TerrainShader terrainShader = TerrainShader();
+    MasterRenderer masterRenderer = MasterRenderer(staticShader, terrainShader, wind);
+
+
+    // Dirrection Lights - Suns
+    std::vector<Light> light;
+    light.push_back(Light(glm::vec3(0.0f, 10000.0f, -7000.0f), glm::vec3(0.4f, 0.4f, 0.4f), glm::vec3(1.0f, 0.0f, 0.0f)));
+
+    //--------------------------------------------------------------
+
+
+    //--------------------------------------------------------------
+    //  Load Model Object from File
+    //--------------------------------------------------------------
+    Model treeModel = Model("./test/tree.obj", false);   // Load Object Model to Mesh from File
+
+
+    //--------------------------------------------------------------
+    // Prepare Model - Tree
+    //--------------------------------------------------------------
+    RawModel rawModel = loader.loadToVAO(treeModel.vertices, treeModel.indices, treeModel.textureCoords, treeModel.normals);
+
+    ModelTexture texture = ModelTexture(loader.loadTexture("res/images/tree.png", true));     // Load Texture from File
+    texture.shineDamper = 1.0f;    // Texture Specular Settings
+    texture.reflectivity = 0.2f;
+    texture.hasTransparency = false;
+    texture.useFakeLighting = false;
+
+    TexturedModel texturedModel = TexturedModel(rawModel, texture);
+
+    //--------------------------------------------------------------
+
+    ModelTexture terrainTexture = ModelTexture(loader.loadTexture("res/images/grass.png", true));     // Load Texture from File
+    terrainTexture.shineDamper = 0.0f;
+    terrainTexture.reflectivity = 0.0f;
+
+    // Load Terrain Textures
+    TerrainTexture backgroundTexture = TerrainTexture(loader.loadTexture("res/images/terrain/grassy.png", false));
+    TerrainTexture rTexture = TerrainTexture(loader.loadTexture("res/images/terrain/dirt.png", false));
+    TerrainTexture gTexture = TerrainTexture(loader.loadTexture("res/images/terrain/pinkFlowers.png", false));
+    TerrainTexture bTexture = TerrainTexture(loader.loadTexture("res/images/terrain/path.png", false));
+
+    // BlendMap
+    TerrainTexture blendMap = TerrainTexture(loader.loadTexture("res/images/terrain/blendMap.png", true));
+    TerrainTexturePack terrainTexurePack = TerrainTexturePack(backgroundTexture, rTexture, gTexture, bTexture);
+    Terrain terrain = Terrain(0, 0, loader, terrainTexurePack, blendMap);
+
+
+
+
+
+
+    /// Ubaci ovo u Window
+    // FPS: https://www.youtube.com/watch?v=jzasDqPmtPI
+    const int FPS = 60;
+    const int frameDelay = 1000 / FPS;
+
+    double frameStart;
+    double frameTime;
+    //--------------------------------------------------------------
+
+
+   // Grass
+   //-----------------------------------------------------------------
+    Model grassModel = Model("./test/grassModel.obj", false);   // Load Object Model to Mesh from File
+
+
+    RawModel grarssRawModel = loader.loadToVAO(grassModel.vertices, grassModel.indices, grassModel.textureCoords, grassModel.normals);
+
+    ModelTexture grasstexture = ModelTexture(loader.loadTexture("res/images/grassTexture.png", false));     // Load Texture from File
+    texture.shineDamper = 1.0f;    // Texture Specular Settings
+    texture.reflectivity = 0.2f;
+    texture.hasTransparency = true;
+    texture.useFakeLighting = false;
+
+    TexturedModel grasstexturedModel = TexturedModel(grarssRawModel, grasstexture);
+
+   //-----------------------------------------------------------------
+
+
+    // Lamp
+    //-----------------------------------------------------------------
+    Model lampModel = Model("./test/lamp.obj", false);   // Load Object Model to Mesh from File
+
+
+    RawModel lampRawModel = loader.loadToVAO(lampModel.vertices, lampModel.indices, lampModel.textureCoords, lampModel.normals);
+
+    ModelTexture lamptexture = ModelTexture(loader.loadTexture("res/images/lamp.png", false));     // Load Texture from File
+    lamptexture.shineDamper = 1.0f;    // Texture Specular Settings
+    lamptexture.reflectivity = 0.2f;
+    lamptexture.hasTransparency = false;
+    lamptexture.useFakeLighting = false;
+
+    TexturedModel lampturedModel = TexturedModel(lampRawModel, lamptexture);
+
+
+
+    //-----------------------------------------------------------------
+
+    srand(time(0));
+
+    std::vector<Entity> entities;
+    int j = 0, c = 0;
+   for(j = 0; j < 200; j++) {
+
+        // Tree
+        float posX = (float)(rand() % 800);
+        float posZ = (float)(rand() % 800);
+
+        float posY = terrain.getHeightOfTerrain(posX, posZ, terrain.heights);
+
+        Entity entity = Entity(texturedModel, glm::vec3(posX, posY, posZ), 0.0f, 0.0f, 0.0f, 4.0f);   // Represent Final Model that has vertices, normals, texCoords, indices
+        entities.push_back(entity);
+
+
+        // Grass
+        if(c < 100) {
+
+            entity = Entity(grasstexturedModel, glm::vec3(posX, posY, posZ), 0.0f, 0.0f, 0.0f, 1.0f);   // Represent Final Model that has vertices, normals, texCoords, indices
+            entities.push_back(entity);
+            c++;
+
+        }
+
+        if(c < 19) {
+            posX = (float)(rand() % 800);
+            posZ = (float)(rand() % 800);
+
+            posY = terrain.getHeightOfTerrain(posX, posZ, terrain.heights);
+
+            light.push_back(Light(glm::vec3(posX, terrain.getHeightOfTerrain(posX, posZ, terrain.heights) + 10.0f, posZ), glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(1.0f, 0.001f, 0.002f)));
+            Entity entity1 = Entity(lampturedModel, glm::vec3(posX, terrain.getHeightOfTerrain(posX, posZ, terrain.heights), posZ), 0.0f, 0.0f, 0.0f, 1.0f);   // Represent Final Model that has vertices, normals, texCoords, indices
+            entities.push_back(entity1);
+
+        }
+
+   }
+
+
+//    // Lamps
+//    //-------------------------------------------------------------------
+//    Model lampModel = Model("./test/lamp.obj", false);   // Load Object Model to Mesh from File
+//
+//
+//    RawModel lampRawModel = loader.loadToVAO(lampModel.vertices, lampModel.indices, lampModel.textureCoords, lampModel.normals);
+//
+//    ModelTexture lamptexture = ModelTexture(loader.loadTexture("res/images/lamp.png", false));     // Load Texture from File
+//    lamptexture.shineDamper = 1.0f;    // Texture Specular Settings
+//    lamptexture.reflectivity = 0.2f;
+//    lamptexture.hasTransparency = false;
+//    lamptexture.useFakeLighting = false;
+//
+//    TexturedModel lampturedModel = TexturedModel(lampRawModel, lamptexture);
+//
+//
+//    light.push_back(Light(glm::vec3(200.0f, terrain.getHeightOfTerrain(200.0f, 200.0f, terrain.heights) + 10.0f, 200.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.001f, 0.002f)));
+//    light.push_back(Light(glm::vec3(500.0f, terrain.getHeightOfTerrain(500.0f, 250.0f, terrain.heights) + 10.0f, 250.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.001f, 0.002f)));
+//    light.push_back(Light(glm::vec3(200.0f, terrain.getHeightOfTerrain(200.0f, 20.0f, terrain.heights) + 10.0f, 20.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.001f, 0.002f)));
+//
+//    Entity entity1 = Entity(lampturedModel, glm::vec3(200.0f, terrain.getHeightOfTerrain(200.0f, 200.0f, terrain.heights), 200.0f), 0.0f, 0.0f, 0.0f, 1.0f);   // Represent Final Model that has vertices, normals, texCoords, indices
+//    Entity entity2 = Entity(lampturedModel, glm::vec3(500.0f, terrain.getHeightOfTerrain(500.0f, 250.0f, terrain.heights), 250.0f), 0.0f, 0.0f, 0.0f, 1.0f);   // Represent Final Model that has vertices, normals, texCoords, indices
+//    Entity entity3 = Entity(lampturedModel, glm::vec3(200.0f, terrain.getHeightOfTerrain(200.0f, 20.0f, terrain.heights), 20.0f), 0.0f, 0.0f, 0.0f, 1.0f);   // Represent Final Model that has vertices, normals, texCoords, indices
+//
+//    entities.push_back(entity1);
+//    entities.push_back(entity2);
+//    entities.push_back(entity3);
+
+
+
+    //-------------------------------------------------------------------
+
+
+    // Skybox
+    ShaderProgram skyboxShader = ShaderProgram("res/shaders/Cubemap Shader/vert.glsl", "res/shaders/Cubemap Shader/frag.glsl");
+
+
+    float skyboxVertices[] = {
+        // positions
+        -1.0f,  1.0f, -1.0f,
+        -1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f, -1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+
+        -1.0f, -1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f,
+        -1.0f, -1.0f,  1.0f,
+
+        -1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f, -1.0f,
+         1.0f,  1.0f,  1.0f,
+         1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f,  1.0f,
+        -1.0f,  1.0f, -1.0f,
+
+        -1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f, -1.0f,
+         1.0f, -1.0f, -1.0f,
+        -1.0f, -1.0f,  1.0f,
+         1.0f, -1.0f,  1.0f
+    };
+
+    unsigned int skyboxVAO, skyboxVBO;
+    glGenVertexArrays(1, &skyboxVAO);
+    glGenBuffers(1, &skyboxVBO);
+    glBindVertexArray(skyboxVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+
+    vector<std::string> faces
+    {
+        "res/images/skybox/right.jpg",
+        "res/images/skybox/left.jpg",
+        "res/images/skybox/top.jpg",
+        "res/images/skybox/bottom.jpg",
+        "res/images/skybox/front.jpg",
+        "res/images/skybox/back.jpg"
+    };
+
+    std::vector<TextureData> cubemapTextureID = loader.decodeTextureFile(faces);
+
+    skyboxShader.start();
+    skyboxShader.setInt("skybox", cubemapTextureID.at(0).textureID);
+    skyboxShader.stop();
+    //-------------------------------------------------------------------
+
+
+
+
+    // GLFW Settings
+    glfwMakeContextCurrent(window);     // Mouse Cant Leave Out Frame
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);    // Disable Mouse
+
+    glfwSetCursorPosCallback(window, mouse_callback);
+    //--------------------------------------------------------------
+
+
+    int i;
+
+
+    // Render Loop
+    while (!glfwWindowShouldClose(window))
+    {
+        frameStart = glfwGetTime() * 1000;
+
+
+        // input
+        // -----
+        processInput(window, &camera);           // ProcessInput.hpp
+        camera.move(terrain);
+
+        for(i = 0; i < entities.size(); i++) {
+            masterRenderer.processEntity(entities.at(i));
+        }
+
+
+        //masterRenderer.processTerrain(terrain2);
+        masterRenderer.processTerrain(terrain);
+
+        masterRenderer.render(light, camera);
+
+
+
+        // Skybox
+        //-------------------------------------------------------------------
+        glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+        skyboxShader.start();
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::scale(model, glm::vec3(1000.0f));
+        glm::mat4 view = glm::mat4(glm::lookAt(camera.position, camera.position + camera.cameraFront, camera.cameraUP)); // remove translation from the view matrix
+        glm::mat4 projection = masterRenderer.createProjectionMatrix(wind);
+
+        skyboxShader.setMat4("model",  model);
+        skyboxShader.setMat4("view", view);
+        skyboxShader.setMat4("projection", projection);
+        // skybox cube
+        glBindVertexArray(skyboxVAO);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTextureID.at(0).textureID);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glBindVertexArray(0);
+        glDepthFunc(GL_LESS); // set depth function back to default
+        skyboxShader.stop();
+        //-------------------------------------------------------------------
+
+
+        //---------------------------------------------------------
+        // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
+        // -------------------------------------------------------------------------------
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+
+        frameTime = glfwGetTime() * 1000 - frameStart;
+
+
+        // FPS Limit
+        if(frameDelay > frameTime) {
+            while(frameDelay > frameTime) {
+                frameTime = glfwGetTime() * 1000 - frameStart;
+            }
+        }
+
+    }
+
+    masterRenderer.cleanUp();
+    glfwTerminate();
+
+    return 0;
+}
+
+
+//----------------------------------------
+/// Ubaci ovo u Camera
+bool firstMouse = true;
+float lastX = 1200 / 2;
+float lastY = 800 / 2;
+
+float yaw = -90.0f;
+float picth = 0.0f;
+
+void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+
+    if(firstMouse)
+    {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos;
+    lastX = xpos;
+    lastY = ypos;
+
+    float sensitivity = 0.08;
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    yaw   += xoffset;
+    picth += yoffset;
+
+    if(picth > 89.0f)
+        picth = 89.0f;
+    if(picth < -89.0f)
+        picth = -89.0f;
+
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(picth));
+    front.y = sin(glm::radians(picth));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(picth));
+
+    camera.cameraFront = glm::normalize(front);
+
+}
+
