@@ -34,6 +34,10 @@
 			<Add directory="include" />
 		</Compiler>
 		<Linker>
+			<!-- Terrain::generateTerrain puts ~890 KB of variable-length arrays on
+			     the stack, and Height (float[256][256], 256 KB) is passed around by
+			     value. That overflows the 1 MB Windows default. -->
+			<Add option="-Wl,--stack,16777216" />
 			<Add library="mingw32" />
 			<Add library="libs/glfw/libglfw3.a" />
 			<Add library="winmm" />
